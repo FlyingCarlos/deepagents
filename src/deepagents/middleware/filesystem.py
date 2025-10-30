@@ -438,6 +438,203 @@ def _grep_tool_generator(
     return grep
 
 
+def _als_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async ls (list files) tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async ls tool that lists files using the backend.
+    """
+    tool_description = custom_description or LIST_FILES_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def als(runtime: ToolRuntime[None, FilesystemState], path: str) -> list[str]:
+        resolved_backend = _get_backend(backend, runtime)
+        validated_path = _validate_path(path)
+        infos = await resolved_backend.als_info(validated_path)
+        return [fi.get("path", "") for fi in infos]
+
+    return als
+
+
+def _aread_file_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async read_file tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async read_file tool that reads files using the backend.
+    """
+    tool_description = custom_description or READ_FILE_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def aread_file(
+        file_path: str,
+        runtime: ToolRuntime[None, FilesystemState],
+        offset: int = DEFAULT_READ_OFFSET,
+        limit: int = DEFAULT_READ_LIMIT,
+    ) -> str:
+        resolved_backend = _get_backend(backend, runtime)
+        file_path = _validate_path(file_path)
+        return await resolved_backend.aread(file_path, offset=offset, limit=limit)
+
+    return aread_file
+
+
+def _awrite_file_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async write_file tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async write_file tool that creates new files using the backend.
+    """
+    tool_description = custom_description or WRITE_FILE_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def awrite_file(
+        file_path: str,
+        content: str,
+        runtime: ToolRuntime[None, FilesystemState],
+    ) -> Command | str:
+        resolved_backend = _get_backend(backend, runtime)
+        file_path = _validate_path(file_path)
+        res: WriteResult = await resolved_backend.awrite(file_path, content)
+        if res.error:
+            return res.error
+        # If backend returns state update, wrap into Command with ToolMessage
+        if res.files_update is not None:
+            return Command(update={
+                "files": res.files_update,
+                "messages": [
+                    ToolMessage(
+                        content=f"Updated file {res.path}",
+                        tool_call_id=runtime.tool_call_id,
+                    )
+                ],
+            })
+        return f"Updated file {res.path}"
+
+    return awrite_file
+
+
+def _aedit_file_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async edit_file tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async edit_file tool that performs string replacements in files using the backend.
+    """
+    tool_description = custom_description or EDIT_FILE_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def aedit_file(
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        runtime: ToolRuntime[None, FilesystemState],
+        *,
+        replace_all: bool = False,
+    ) -> Command | str:
+        resolved_backend = _get_backend(backend, runtime)
+        file_path = _validate_path(file_path)
+        res: EditResult = await resolved_backend.aedit(file_path, old_string, new_string, replace_all=replace_all)
+        if res.error:
+            return res.error
+        if res.files_update is not None:
+            return Command(update={
+                "files": res.files_update,
+                "messages": [
+                    ToolMessage(
+                        content=f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'",
+                        tool_call_id=runtime.tool_call_id,
+                    )
+                ],
+            })
+        return f"Successfully replaced {res.occurrences} instance(s) of the string in '{res.path}'"
+
+    return aedit_file
+
+
+def _aglob_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async glob tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async glob tool that finds files by pattern using the backend.
+    """
+    tool_description = custom_description or GLOB_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def aglob(pattern: str, runtime: ToolRuntime[None, FilesystemState], path: str = "/") -> list[str]:
+        resolved_backend = _get_backend(backend, runtime)
+        infos = await resolved_backend.aglob_info(pattern, path=path)
+        return [fi.get("path", "") for fi in infos]
+
+    return aglob
+
+
+def _agrep_tool_generator(
+    backend: BackendProtocol | Callable[[ToolRuntime], BackendProtocol],
+    custom_description: str | None = None,
+) -> BaseTool:
+    """Generate the async grep tool.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_description: Optional custom description for the tool.
+
+    Returns:
+        Configured async grep tool that searches for patterns in files using the backend.
+    """
+    tool_description = custom_description or GREP_TOOL_DESCRIPTION
+
+    @tool(description=tool_description)
+    async def agrep(
+        pattern: str,
+        runtime: ToolRuntime[None, FilesystemState],
+        path: Optional[str] = None,
+        glob: str | None = None,
+        output_mode: Literal["files_with_matches", "content", "count"] = "files_with_matches",
+    ) -> str:
+        resolved_backend = _get_backend(backend, runtime)
+        raw = await resolved_backend.agrep_raw(pattern, path=path, glob=glob)
+        if isinstance(raw, str):
+            return raw
+        formatted = format_grep_matches(raw, output_mode)
+        return truncate_if_too_long(formatted)  # type: ignore[arg-type]
+
+    return agrep
+
+
 TOOL_GENERATORS = {
     "ls": _ls_tool_generator,
     "read_file": _read_file_tool_generator,
@@ -445,6 +642,15 @@ TOOL_GENERATORS = {
     "edit_file": _edit_file_tool_generator,
     "glob": _glob_tool_generator,
     "grep": _grep_tool_generator,
+}
+
+ASYNC_TOOL_GENERATORS = {
+    "als": _als_tool_generator,
+    "aread_file": _aread_file_tool_generator,
+    "awrite_file": _awrite_file_tool_generator,
+    "aedit_file": _aedit_file_tool_generator,
+    "aglob": _aglob_tool_generator,
+    "agrep": _agrep_tool_generator,
 }
 
 
@@ -466,6 +672,32 @@ def _get_filesystem_tools(
     tools = []
     for tool_name, tool_generator in TOOL_GENERATORS.items():
         tool = tool_generator(backend, custom_tool_descriptions.get(tool_name))
+        tools.append(tool)
+    return tools
+
+
+def _get_async_filesystem_tools(
+    backend: BackendProtocol,
+    custom_tool_descriptions: dict[str, str] | None = None,
+) -> list[BaseTool]:
+    """Get async filesystem tools.
+
+    Args:
+        backend: Backend to use for file storage, or a factory function that takes runtime and returns a backend.
+        custom_tool_descriptions: Optional custom descriptions for tools.
+
+    Returns:
+        List of configured async filesystem tools (als, aread_file, awrite_file, aedit_file, aglob, agrep).
+    """
+    if custom_tool_descriptions is None:
+        custom_tool_descriptions = {}
+    tools = []
+    for tool_name, tool_generator in ASYNC_TOOL_GENERATORS.items():
+        # Map async tool names to sync names for custom descriptions
+        sync_name = tool_name[1:] if tool_name.startswith("a") else tool_name
+        if sync_name == "ls":
+            sync_name = "ls"
+        tool = tool_generator(backend, custom_tool_descriptions.get(sync_name))
         tools.append(tool)
     return tools
 
