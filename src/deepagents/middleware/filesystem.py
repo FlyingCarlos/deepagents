@@ -24,7 +24,6 @@ from typing_extensions import TypedDict
 from deepagents.backends.protocol import BackendProtocol, BackendFactory, WriteResult, EditResult
 from deepagents.backends import StateBackend
 from deepagents.backends.utils import (
-    update_file_data,
     format_content_with_line_numbers,
     format_grep_matches,
     truncate_if_too_long,

@@ -5,7 +5,7 @@ must follow. Backends can store files in different locations (state, filesystem,
 database, etc.) and provide a uniform interface for file operations.
 """
 
-from typing import TYPE_CHECKING, Optional, Protocol, runtime_checkable, Callable, TypeAlias, Any
+from typing import Optional, Protocol, runtime_checkable, Callable, TypeAlias, Any
 from langchain.tools import ToolRuntime
 from deepagents.backends.utils import FileInfo, GrepMatch
 
