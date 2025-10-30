@@ -694,8 +694,6 @@ def _get_async_filesystem_tools(
     for tool_name, tool_generator in ASYNC_TOOL_GENERATORS.items():
         # Map async tool names to sync names for custom descriptions
         sync_name = tool_name[1:] if tool_name.startswith("a") else tool_name
-        if sync_name == "ls":
-            sync_name = "ls"
         tool = tool_generator(backend, custom_tool_descriptions.get(sync_name))
         tools.append(tool)
     return tools
