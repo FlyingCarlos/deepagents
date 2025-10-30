@@ -375,5 +375,186 @@ class StoreBackend:
             })
         return infos
 
+    async def _asearch_store_paginated(
+        self,
+        store: BaseStore,
+        namespace: tuple[str, ...],
+        filter: Optional[dict[str, Any]] = None,
+    ) -> list[Item]:
+        """Async version of _search_store_paginated."""
+        all_items: list[Item] = []
+        offset = 0
+        limit = 100
+        while True:
+            items = await store.asearch(namespace, filter=filter, limit=limit, offset=offset)
+            if not items:
+                break
+            all_items.extend(items)
+            if len(items) < limit:
+                break
+            offset += limit
+        return all_items
+
+    async def als_info(self, path: str) -> list[FileInfo]:
+        """Async version of ls_info."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        items = await self._asearch_store_paginated(store, namespace)
+        
+        infos: list[FileInfo] = []
+        subdirs: set[str] = set()
+        normalized_path = path if path.endswith("/") else path + "/"
+
+        for item in items:
+            k = item.key
+            if not k.startswith(normalized_path):
+                continue
+            relative = k[len(normalized_path):]
+            if "/" in relative:
+                subdir_name = relative.split("/")[0]
+                subdirs.add(normalized_path + subdir_name + "/")
+                continue
+            
+            try:
+                file_data = self._convert_store_item_to_file_data(item)
+                size = len("\n".join(file_data.get("content", [])))
+                infos.append({
+                    "path": k,
+                    "is_dir": False,
+                    "size": int(size),
+                    "modified_at": file_data.get("modified_at", ""),
+                })
+            except ValueError:
+                continue
+
+        for subdir in sorted(subdirs):
+            infos.append({
+                "path": subdir,
+                "is_dir": True,
+                "size": 0,
+                "modified_at": "",
+            })
+
+        infos.sort(key=lambda x: x.get("path", ""))
+        return infos
+
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Async version of read."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        item = await store.aget(namespace, file_path)
+        
+        if item is None:
+            return f"Error: File '{file_path}' not found"
+        
+        try:
+            file_data = self._convert_store_item_to_file_data(item)
+        except ValueError as e:
+            return f"Error: {e}"
+        
+        return format_read_response(file_data, offset, limit)
+
+    async def awrite(
+        self,
+        file_path: str,
+        content: str,
+    ) -> WriteResult:
+        """Async version of write."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        existing = await store.aget(namespace, file_path)
+        
+        if existing is not None:
+            return WriteResult(error=f"Cannot write to {file_path} because it already exists. Read and then make an edit, or write to a new path.")
+        
+        new_file_data = create_file_data(content)
+        store_value = self._convert_file_data_to_store_value(new_file_data)
+        await store.aput(namespace, file_path, store_value)
+        return WriteResult(path=file_path, files_update=None)
+
+    async def aedit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """Async version of edit."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        item = await store.aget(namespace, file_path)
+        
+        if item is None:
+            return EditResult(error=f"Error: File '{file_path}' not found")
+        
+        try:
+            file_data = self._convert_store_item_to_file_data(item)
+        except ValueError as e:
+            return EditResult(error=f"Error: {e}")
+        
+        content = file_data_to_string(file_data)
+        result = perform_string_replacement(content, old_string, new_string, replace_all)
+        
+        if isinstance(result, str):
+            return EditResult(error=result)
+        
+        new_content, occurrences = result
+        new_file_data = update_file_data(file_data, new_content)
+        store_value = self._convert_file_data_to_store_value(new_file_data)
+        await store.aput(namespace, file_path, store_value)
+        return EditResult(path=file_path, files_update=None, occurrences=int(occurrences))
+
+    async def agrep_raw(
+        self,
+        pattern: str,
+        path: str = "/",
+        glob: Optional[str] = None,
+    ) -> list[GrepMatch] | str:
+        """Async version of grep_raw."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        items = await self._asearch_store_paginated(store, namespace)
+        
+        files: dict[str, Any] = {}
+        for item in items:
+            try:
+                files[item.key] = self._convert_store_item_to_file_data(item)
+            except ValueError:
+                continue
+        
+        return grep_matches_from_files(files, pattern, path, glob)
+
+    async def aglob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
+        """Async version of glob_info."""
+        store = self._get_store()
+        namespace = self._get_namespace()
+        items = await self._asearch_store_paginated(store, namespace)
+        files: dict[str, Any] = {}
+        for item in items:
+            try:
+                files[item.key] = self._convert_store_item_to_file_data(item)
+            except ValueError:
+                continue
+        result = _glob_search_files(files, pattern, path)
+        if result == "No files found":
+            return []
+        paths = result.split("\n")
+        infos: list[FileInfo] = []
+        for p in paths:
+            fd = files.get(p)
+            size = len("\n".join(fd.get("content", []))) if fd else 0
+            infos.append({
+                "path": p,
+                "is_dir": False,
+                "size": int(size),
+                "modified_at": fd.get("modified_at", "") if fd else "",
+            })
+        return infos
+
 
 # Provider classes removed: prefer callables like `lambda rt: StoreBackend(rt)`

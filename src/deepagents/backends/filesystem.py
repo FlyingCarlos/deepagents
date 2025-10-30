@@ -7,6 +7,7 @@ Security and search upgrades:
   and optional glob include filtering, while preserving virtual path behavior
 """
 
+import asyncio
 import os
 import re
 import json
@@ -475,3 +476,47 @@ class FilesystemBackend:
 
         results.sort(key=lambda x: x.get("path", ""))
         return results
+
+    async def als_info(self, path: str) -> list[FileInfo]:
+        """Async version of ls_info."""
+        return await asyncio.to_thread(self.ls_info, path)
+
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Async version of read."""
+        return await asyncio.to_thread(self.read, file_path, offset, limit)
+
+    async def agrep_raw(
+        self,
+        pattern: str,
+        path: Optional[str] = None,
+        glob: Optional[str] = None,
+    ) -> list[GrepMatch] | str:
+        """Async version of grep_raw."""
+        return await asyncio.to_thread(self.grep_raw, pattern, path, glob)
+
+    async def aglob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
+        """Async version of glob_info."""
+        return await asyncio.to_thread(self.glob_info, pattern, path)
+
+    async def awrite(
+        self,
+        file_path: str,
+        content: str,
+    ) -> WriteResult:
+        """Async version of write."""
+        return await asyncio.to_thread(self.write, file_path, content)
+
+    async def aedit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """Async version of edit."""
+        return await asyncio.to_thread(self.edit, file_path, old_string, new_string, replace_all)

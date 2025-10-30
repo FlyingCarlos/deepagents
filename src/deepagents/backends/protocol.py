@@ -78,6 +78,10 @@ class BackendProtocol(Protocol):
         """Structured listing with file metadata."""
         ...
 
+    async def als_info(self, path: str) -> list["FileInfo"]:
+        """Async version of ls_info. Structured listing with file metadata."""
+        ...
+
     def read(
         self,
         file_path: str,
@@ -85,6 +89,15 @@ class BackendProtocol(Protocol):
         limit: int = 2000,
     ) -> str:
         """Read file content with line numbers or an error string."""
+        ...
+
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Async version of read. Read file content with line numbers or an error string."""
         ...
 
     def grep_raw(
@@ -96,8 +109,21 @@ class BackendProtocol(Protocol):
         """Structured search results or error string for invalid input."""
         ...
 
+    async def agrep_raw(
+        self,
+        pattern: str,
+        path: Optional[str] = None,
+        glob: Optional[str] = None,
+    ) -> list["GrepMatch"] | str:
+        """Async version of grep_raw. Structured search results or error string for invalid input."""
+        ...
+
     def glob_info(self, pattern: str, path: str = "/") -> list["FileInfo"]:
         """Structured glob matching returning FileInfo dicts."""
+        ...
+
+    async def aglob_info(self, pattern: str, path: str = "/") -> list["FileInfo"]:
+        """Async version of glob_info. Structured glob matching returning FileInfo dicts."""
         ...
 
     def write(
@@ -108,6 +134,14 @@ class BackendProtocol(Protocol):
         """Create a new file. Returns WriteResult; error populated on failure."""
         ...
 
+    async def awrite(
+            self,
+            file_path: str,
+            content: str,
+    ) -> WriteResult:
+        """Async version of write. Create a new file. Returns WriteResult; error populated on failure."""
+        ...
+
     def edit(
             self,
             file_path: str,
@@ -116,6 +150,16 @@ class BackendProtocol(Protocol):
             replace_all: bool = False,
     ) -> EditResult:
         """Edit a file by replacing string occurrences. Returns EditResult."""
+        ...
+
+    async def aedit(
+            self,
+            file_path: str,
+            old_string: str,
+            new_string: str,
+            replace_all: bool = False,
+    ) -> EditResult:
+        """Async version of edit. Edit a file by replacing string occurrences. Returns EditResult."""
         ...
 
 

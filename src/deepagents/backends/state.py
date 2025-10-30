@@ -187,4 +187,48 @@ class StateBackend:
             })
         return infos
 
+    async def als_info(self, path: str) -> list[FileInfo]:
+        """Async version of ls_info."""
+        return self.ls_info(path)
+
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Async version of read."""
+        return self.read(file_path, offset=offset, limit=limit)
+
+    async def agrep_raw(
+        self,
+        pattern: str,
+        path: str = "/",
+        glob: Optional[str] = None,
+    ) -> list[GrepMatch] | str:
+        """Async version of grep_raw."""
+        return self.grep_raw(pattern, path=path, glob=glob)
+
+    async def aglob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
+        """Async version of glob_info."""
+        return self.glob_info(pattern, path=path)
+
+    async def awrite(
+        self,
+        file_path: str,
+        content: str,
+    ) -> WriteResult:
+        """Async version of write."""
+        return self.write(file_path, content)
+
+    async def aedit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """Async version of edit."""
+        return self.edit(file_path, old_string, new_string, replace_all=replace_all)
+
 # Provider classes removed: prefer callables like `lambda rt: StateBackend(rt)`

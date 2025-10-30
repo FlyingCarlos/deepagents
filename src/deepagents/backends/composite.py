@@ -220,5 +220,154 @@ class CompositeBackend:
                 pass
         return res
 
+    async def als_info(self, path: str) -> list[FileInfo]:
+        """Async version of ls_info."""
+        # Check if path matches a specific route
+        for route_prefix, backend in self.sorted_routes:
+            if path.startswith(route_prefix.rstrip("/")):
+                # Query only the matching routed backend
+                suffix = path[len(route_prefix):]
+                search_path = f"/{suffix}" if suffix else "/"
+                infos = await backend.als_info(search_path)
+                prefixed: list[FileInfo] = []
+                for fi in infos:
+                    fi = dict(fi)
+                    fi["path"] = f"{route_prefix[:-1]}{fi['path']}"
+                    prefixed.append(fi)
+                return prefixed
+
+        # At root, aggregate default and all routed backends
+        if path == "/":
+            results: list[FileInfo] = []
+            results.extend(await self.default.als_info(path))
+            for route_prefix, backend in self.sorted_routes:
+                # Add the route itself as a directory (e.g., /memories/)
+                results.append({
+                    "path": route_prefix,
+                    "is_dir": True,
+                    "size": 0,
+                    "modified_at": "",
+                })
+
+            results.sort(key=lambda x: x.get("path", ""))
+            return results
+
+        # Path doesn't match a route: query only default backend
+        return await self.default.als_info(path)
+
+    async def aread(
+        self,
+        file_path: str,
+        offset: int = 0,
+        limit: int = 2000,
+    ) -> str:
+        """Async version of read."""
+        backend, stripped_key = self._get_backend_and_key(file_path)
+        return await backend.aread(stripped_key, offset, limit)
+
+    async def agrep_raw(
+        self,
+        pattern: str,
+        path: Optional[str] = None,
+        glob: Optional[str] = None,
+    ) -> list[GrepMatch] | str:
+        """Async version of grep_raw."""
+        all_matches: list[GrepMatch] = []
+        
+        if path is None or path == "/":
+            # Search all backends
+            result = await self.default.agrep_raw(pattern, path, glob)
+            if isinstance(result, list):
+                all_matches.extend(result)
+            
+            for route_prefix, backend in self.sorted_routes:
+                result = await backend.agrep_raw(pattern, path, glob)
+                if isinstance(result, list):
+                    for match in result:
+                        match = dict(match)
+                        match["path"] = f"{route_prefix[:-1]}{match['path']}"
+                        all_matches.append(match)
+            
+            return all_matches
+        
+        # Search specific backend
+        backend, stripped_path = self._get_backend_and_key(path)
+        result = await backend.agrep_raw(pattern, stripped_path, glob)
+        
+        if isinstance(result, list):
+            # Add prefix if using routed backend
+            for route_prefix, route_backend in self.sorted_routes:
+                if backend is route_backend:
+                    prefixed_matches: list[GrepMatch] = []
+                    for match in result:
+                        match = dict(match)
+                        match["path"] = f"{route_prefix[:-1]}{match['path']}"
+                        prefixed_matches.append(match)
+                    return prefixed_matches
+        
+        return result
+
+    async def aglob_info(self, pattern: str, path: str = "/") -> list[FileInfo]:
+        """Async version of glob_info."""
+        results: list[FileInfo] = []
+        
+        # Search default backend
+        default_results = await self.default.aglob_info(pattern, path)
+        results.extend(default_results)
+        
+        # Search all routed backends
+        for route_prefix, backend in self.sorted_routes:
+            routed_results = await backend.aglob_info(pattern, path)
+            for fi in routed_results:
+                fi = dict(fi)
+                fi["path"] = f"{route_prefix[:-1]}{fi['path']}"
+                results.append(fi)
+        
+        results.sort(key=lambda x: x.get("path", ""))
+        return results
+
+    async def awrite(
+        self,
+        file_path: str,
+        content: str,
+    ) -> WriteResult:
+        """Async version of write."""
+        backend, stripped_key = self._get_backend_and_key(file_path)
+        res = await backend.awrite(stripped_key, content)
+        # If this is a state-backed update and default has state, merge so listings reflect changes
+        if res.files_update:
+            try:
+                runtime = getattr(self.default, "runtime", None)
+                if runtime is not None:
+                    state = runtime.state
+                    files = state.get("files", {})
+                    files.update(res.files_update)
+                    state["files"] = files
+            except Exception:
+                pass
+        return res
+
+    async def aedit(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        replace_all: bool = False,
+    ) -> EditResult:
+        """Async version of edit."""
+        backend, stripped_key = self._get_backend_and_key(file_path)
+        res = await backend.aedit(stripped_key, old_string, new_string, replace_all=replace_all)
+        if res.files_update:
+            try:
+                runtime = getattr(self.default, "runtime", None)
+                if runtime is not None:
+                    state = runtime.state
+                    files = state.get("files", {})
+                    files.update(res.files_update)
+                    state["files"] = files
+            except Exception:
+                pass
+        return res
+
 
  
